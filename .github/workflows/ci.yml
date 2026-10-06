@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Lint, types, unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24 # the version the app runs on in Azure App Service
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      # Fails below 100 % of lines, statements and functions, or 98 % of branches (vitest.config.ts).
+      - run: npm run test:coverage
+
+  e2e:
+    name: Package and browser tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # The same package that is deployed: build, standalone server, static files, no env files.
+      - run: npm run package
+      - name: The package holds the server and no secrets
+        run: |
+          unzip -l deploy.zip > listing.txt
+          grep -q ' server.js$' listing.txt
+          grep -q '\.next/static/' listing.txt
+          if grep -q '\.env' listing.txt; then echo "deploy.zip contains an env file"; exit 1; fi
+      - run: npx playwright install --with-deps chromium
+      # Against the packaged server, with no Azure settings: these tests never call Azure.
+      - run: npm run test:e2e
+        env:
+          E2E_SERVER: node .next/standalone/server.js
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
