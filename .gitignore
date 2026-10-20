@@ -44,3 +44,14 @@ next-env.d.ts
 # test output
 /test-results/
 /playwright-report/
+
+# secrets and keys (.env.example stays tracked)
+.env
+.env.*
+!.env.example
+*.key
+*.PublishSettings
+
+# Claude Code local state
+.claude/HANDOFF.auto.md
+.claude/settings.local.json
